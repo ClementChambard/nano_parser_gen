@@ -1,0 +1,10 @@
+[package]
+name = "rust_parser_generator"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+parser_gen_macro = { version = "0.1.0", path = "parser_gen_macro" }
+parser_gen = { version = "0.1.0", path = "parser_gen" }
