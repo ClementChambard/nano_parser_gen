@@ -87,15 +87,18 @@ impl RuleD {
                 }
                 mappings.push(Ident::new(&format!("__mapping_{i}__"), ast.name.span()));
             }
+            let return_id = Ident::new("__return__", ast.name.span());
+            let params_id = Ident::new("__params__", ast.name.span());
+            let parser_data_id = Ident::new("__parser_data__", ast.name.span());
             let mut ast_q = quote!();
             for (i, ((m, t), c)) in mappings.iter().zip(type_names).zip(param_type).enumerate() {
                 match c {
                     AstFuncParamMode::TokenEmpty => {}
                     AstFuncParamMode::TokenGetVal => {
-                        ast_q = quote! { #ast_q let AstParam::Token(Token { ty: TokenType:: #t (mut #m), .. }) = __params__[#i].clone() else { panic!() }; };
+                        ast_q = quote! { #ast_q let AstParam::Token(Token { ty: TokenType:: #t (mut #m), .. }) = #params_id[#i].clone() else { panic!() }; };
                     }
                     AstFuncParamMode::AstNode => {
-                        ast_q = quote! { #ast_q let AstParam::Ast(AstNode:: #t (mut #m)) = __params__[#i].clone() else { panic!() }; };
+                        ast_q = quote! { #ast_q let AstParam::Ast(AstNode:: #t (mut #m)) = #params_id[#i].clone() else { panic!() }; };
                     }
                 }
             }
@@ -105,17 +108,17 @@ impl RuleD {
             let ast_q = if ast.last {
                 quote! {
                     #[allow(non_snake_case)]
-                    fn #name (#[allow(non_snake_case)] __params__: &[AstParam], #[allow(non_snake_case)] __parser_data__: &mut #parser_type) -> AstParam {
+                    fn #name (#[allow(non_snake_case)] #params_id: &[AstParam], #[allow(non_snake_case)] #parser_data_id: &mut #parser_type) -> AstParam {
                         #ast_q
-                        let mut __return__;
+                        let mut #return_id;
                         #e
-                        AstParam::Ast(AstNode:: #output_type(__return__))
+                        AstParam::Ast(AstNode:: #output_type(#return_id))
                     }
                 }
             } else {
                 quote! {
                     #[allow(non_snake_case)]
-                    fn #name (#[allow(non_snake_case)] __params__: &[AstParam], #[allow(non_snake_case)] __parser_data__: &mut #parser_type) {
+                    fn #name (#[allow(non_snake_case)] #params_id: &[AstParam], #[allow(non_snake_case)] #parser_data_id: &mut #parser_type) {
                         #ast_q
                         #e
                     }
@@ -454,7 +457,31 @@ impl GrammarData {
             // For each terminal in the FIRST set, create a production table entry.
             for terminal in first_set {
                 if terminal != "<none>" {
-                    let term_id = syn::Ident::new(&terminal, proc_macro2::Span::call_site());
+                    println!("{}", terminal);
+                    let term_id = if terminal == "EOF" {
+                        Ident::new("EOF", Span::call_site())
+                    } else {
+                        self.tokens
+                            .iter()
+                            .find_map(|t| match t {
+                                TokenD::Regex(i, _, _) => {
+                                    if i.to_string() == terminal {
+                                        Some(i)
+                                    } else {
+                                        None
+                                    }
+                                }
+                                TokenD::Exact(i, _, _) => {
+                                    if i.to_string() == terminal {
+                                        Some(i)
+                                    } else {
+                                        None
+                                    }
+                                }
+                            })
+                            .expect("Expected to find term_ident")
+                            .clone()
+                    };
                     let mut qqq = quote!( nt: AstNodeNoData:: #non_terminal_id, t: TokenTypeNoData:: #term_id, );
                     let mut qq = quote!();
                     for r in &rule.symbols {

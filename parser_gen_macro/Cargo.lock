@@ -3,7 +3,7 @@
 version = 3
 
 [[package]]
-name = "parser_gen"
+name = "parser_gen_macro"
 version = "0.1.0"
 dependencies = [
  "proc-macro2",

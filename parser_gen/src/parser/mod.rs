@@ -1,5 +1,13 @@
 use crate::lexer::{Token, Tokens};
 
+#[derive(Clone)]
+pub struct NoParserData {}
+impl NoParserData {
+    pub fn new() -> Self {
+        Self {}
+    }
+}
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum RuleSymbol<T: Clone + Copy + Eq + PartialEq, N: Clone + Copy + Eq + PartialEq> {
     T(T),

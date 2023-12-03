@@ -3,7 +3,7 @@ use proc_macro2::{Group, Ident, Span, TokenStream, TokenTree};
 pub fn combine_spans(span1: Span, span2: Span) -> Span {
     // Combine the spans of the two tokens
     span1.join(span2).unwrap_or_else(|| {
-        // In case the spans cannot be joined, return a fallback span
+        //  In case the spans cannot be joined, return a fallback span
         Span::call_site()
     })
 }
@@ -22,7 +22,7 @@ pub fn preprocess(input: TokenStream) -> TokenStream {
                                 if p2.as_char() == '$' {
                                     result.extend(Some(TokenTree::Ident(Ident::new(
                                         "__return__",
-                                        combine_spans(p.span(), p2.span()),
+                                        p.span(), // combine_spans(p.span(), p2.span()),
                                     ))));
                                 } else {
                                     result.extend([TokenTree::Punct(p), TokenTree::Punct(p2)]);
@@ -36,7 +36,7 @@ pub fn preprocess(input: TokenStream) -> TokenStream {
                                     }
                                     Ok(ll) => result.extend(Some(TokenTree::Ident(Ident::new(
                                         &format!("__mapping_{ll}__"),
-                                        combine_spans(p.span(), l.span()),
+                                        p.span(), //combine_spans(p.span(), l.span()),
                                     )))),
                                 }
                             }
@@ -52,7 +52,7 @@ pub fn preprocess(input: TokenStream) -> TokenStream {
                             if p2.as_char() == '@' {
                                 result.extend(Some(TokenTree::Ident(Ident::new(
                                     "__parser_data__",
-                                    combine_spans(p.span(), p2.span()),
+                                    p.span(), // combine_spans(p.span(), p2.span()),
                                 ))));
                             } else {
                                 result.extend([TokenTree::Punct(p), TokenTree::Punct(p2)]);
