@@ -457,7 +457,6 @@ impl GrammarData {
             // For each terminal in the FIRST set, create a production table entry.
             for terminal in first_set {
                 if terminal != "<none>" {
-                    println!("{}", terminal);
                     let term_id = if terminal == "EOF" {
                         Ident::new("EOF", Span::call_site())
                     } else {
