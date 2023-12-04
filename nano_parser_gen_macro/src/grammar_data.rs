@@ -594,12 +594,12 @@ impl GrammarData {
             };
         }
         quote = quote!(
-            use parser_gen::from_lexed::FromLexed;
-            pub type Token = parser_gen::lexer::Token<TokenType>;
+            use nano_parser_gen::from_lexed::FromLexed;
+            pub type Token = nano_parser_gen::lexer::Token<TokenType>;
             #[derive(Debug, Clone, PartialEq)]
             pub enum TokenType { #quote EOF }
 
-            impl parser_gen::parser::NoData<TokenTypeNoData> for TokenType {
+            impl nano_parser_gen::parser::NoData<TokenTypeNoData> for TokenType {
                 fn no_data(&self) -> TokenTypeNoData {
                 match self {
                     #quote3
@@ -608,7 +608,7 @@ impl GrammarData {
             }
             }
 
-            impl parser_gen::parser::GetEOF<TokenTypeNoData> for TokenType {
+            impl nano_parser_gen::parser::GetEOF<TokenTypeNoData> for TokenType {
                 fn get_eof() -> TokenTypeNoData { TokenTypeNoData::EOF }
             }
 
@@ -662,9 +662,9 @@ impl GrammarData {
         for t in &self.skip {
             lexer_quote = quote! { #lexer_quote .skip(#t) };
         }
-        // pub type Lexer = parser_gen::lexer::Lexer<fn(&str) -> TokenType, TokenType>;
+        // pub type Lexer = nano_parser_gen::lexer::Lexer<fn(&str) -> TokenType, TokenType>;
         quote = quote! { #quote
-            pub type Lexer = parser_gen::lexer::Lexer<TokenType>;
+            pub type Lexer = nano_parser_gen::lexer::Lexer<TokenType>;
             pub fn lexer() -> Lexer {
                 #lexer_quote .eof(Box::new(TokenType::make_t_eof))
                     .build().expect("Expected to be able to build lexer")
@@ -699,7 +699,7 @@ impl GrammarData {
             pub enum AstNode {
             #q
         }
-            impl parser_gen::parser::NoData<AstNodeNoData> for AstNode {
+            impl nano_parser_gen::parser::NoData<AstNodeNoData> for AstNode {
                 fn no_data(&self) -> AstNodeNoData {
                     match self {
                         #q3
@@ -710,17 +710,17 @@ impl GrammarData {
             pub enum AstNodeNoData {
             #q2
         }
-        pub type Symbol = parser_gen::parser::RuleSymbol<TokenTypeNoData, AstNodeNoData>;
-        pub type AstParam = parser_gen::parser::AstParam<Token, AstNode>;
-        pub type AstFunc = parser_gen::parser::AstFunc<Token, AstNode, #parser_data_type>;
-        pub type ParseTableEntry = parser_gen::parser::ParseTableEntry<Token, TokenTypeNoData, AstNode, AstNodeNoData, #parser_data_type>;
+        pub type Symbol = nano_parser_gen::parser::RuleSymbol<TokenTypeNoData, AstNodeNoData>;
+        pub type AstParam = nano_parser_gen::parser::AstParam<Token, AstNode>;
+        pub type AstFunc = nano_parser_gen::parser::AstFunc<Token, AstNode, #parser_data_type>;
+        pub type ParseTableEntry = nano_parser_gen::parser::ParseTableEntry<Token, TokenTypeNoData, AstNode, AstNodeNoData, #parser_data_type>;
 
-        pub fn parse<'r>(tokens: parser_gen::lexer::Tokens<'r, TokenType>) -> #start_type {
-                let Some(AstParam::Ast(AstNode:: #start_item (s))) = parser_gen::parser::parse(PARSE_TABLE, AstNodeNoData:: #start_item, tokens, #parser_data_type ::new()) else { panic!("Parser error"); };
+        pub fn parse<'r>(tokens: nano_parser_gen::lexer::Tokens<'r, TokenType>) -> #start_type {
+                let Some(AstParam::Ast(AstNode:: #start_item (s))) = nano_parser_gen::parser::parse(PARSE_TABLE, AstNodeNoData:: #start_item, tokens, #parser_data_type ::new()) else { panic!("Parser error"); };
                 s
             }
 
-        pub fn parse_source(source: parser_gen::lexer::SourceFile) -> #start_type {
+        pub fn parse_source(source: nano_parser_gen::lexer::SourceFile) -> #start_type {
             parse(lexer().tokens(&source))
         }
 

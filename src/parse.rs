@@ -4,7 +4,7 @@ use util::{BinExprPart, InstrSub, ParserData};
 
 use super::ast;
 
-parser_gen_macro::grammar! {
+nano_parser_gen_macro::grammar! {
 
 %parserdata ParserData
 

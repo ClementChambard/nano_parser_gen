@@ -18,15 +18,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f665ee40bc4a3c5590afb1e9677db74a508659dfd71e126420da8274909a0167"
 
 [[package]]
-name = "parser_gen"
-version = "0.1.0"
+name = "nano_parser_gen"
+version = "0.2.0"
 dependencies = [
  "regex",
 ]
 
 [[package]]
-name = "parser_gen_macro"
-version = "0.1.0"
+name = "nano_parser_gen_macro"
+version = "0.2.0"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -84,8 +84,8 @@ checksum = "c08c74e62047bb2de4ff487b251e4a92e24f48745648451635cec7d591162d9f"
 name = "rust_parser_generator"
 version = "0.1.0"
 dependencies = [
- "parser_gen",
- "parser_gen_macro",
+ "nano_parser_gen",
+ "nano_parser_gen_macro",
 ]
 
 [[package]]

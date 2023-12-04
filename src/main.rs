@@ -5,7 +5,7 @@ mod parse;
 fn main() {
     println!(
         "{:#?}",
-        parse::parse_source(parser_gen::lexer::SourceFile::from(
+        parse::parse_source(nano_parser_gen::lexer::SourceFile::from(
             r#"
 // test comment 1
 ecli { "a", "b" } 
