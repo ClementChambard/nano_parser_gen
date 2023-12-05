@@ -1,3 +1,6 @@
+use crate::error::source_quote::SourceQuote;
+use std::ops::Range;
+
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Location {
     pub line: usize,
@@ -83,6 +86,19 @@ impl SourceFile {
         let start = self.line_sizes[..i].iter().sum();
         let len = self.line_sizes[i] - 1;
         &self.content[start..start + len]
+    }
+
+    pub fn quote(&self, lines: Range<usize>) -> SourceQuote {
+        let mut lines_vec = Vec::new();
+        let first_line = lines.start;
+        for l in lines {
+            lines_vec.push(self.get_line(l));
+        }
+        SourceQuote::new(&self.filename, lines_vec, first_line)
+    }
+
+    pub fn quote_line(&self, line: usize) -> SourceQuote {
+        SourceQuote::new(&self.filename, vec![self.get_line(line)], line)
     }
 }
 

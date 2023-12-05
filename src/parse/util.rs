@@ -1,3 +1,5 @@
+use crate::ast::Instr;
+
 use super::*;
 
 #[derive(Clone, Debug)]
@@ -180,6 +182,7 @@ impl Scope {
 #[derive(Clone)]
 pub struct ParserData {
     scope: Vec<Scope>,
+    pub instrs: Vec<Instr>,
     pub rank: u8,
     pub time: usize,
 }
@@ -189,6 +192,7 @@ impl ParserData {
         Self {
             scope: vec![],
             rank: 255,
+            instrs: Vec::new(),
             time: 0,
         }
     }

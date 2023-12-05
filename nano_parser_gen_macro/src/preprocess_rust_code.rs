@@ -8,6 +8,29 @@ pub fn combine_spans(span1: Span, span2: Span) -> Span {
     })
 }
 
+pub fn preprocess_for_token(input: TokenStream) -> TokenStream {
+    let mut result = TokenStream::new();
+    let mut it = input.into_iter();
+    while let Some(token) = it.next() {
+        match token {
+            TokenTree::Punct(p) => match p.as_char() {
+                '$' => result.extend(Some(TokenTree::Ident(Ident::new("__s__", p.span())))),
+                _ => result.extend(Some(TokenTree::Punct(p))),
+            },
+            TokenTree::Group(g) => {
+                let inner_tokens = preprocess_for_token(g.stream());
+                let delimiter = g.delimiter();
+                let new_group = Group::new(delimiter, inner_tokens);
+                result.extend(Some(TokenTree::Group(new_group)));
+            }
+            _ => {
+                result.extend(Some(token));
+            }
+        }
+    }
+    result
+}
+
 pub fn preprocess(input: TokenStream) -> TokenStream {
     let mut result = TokenStream::new();
 

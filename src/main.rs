@@ -1,5 +1,4 @@
 mod ast;
-mod error;
 mod parse;
 
 fn main() {
@@ -8,7 +7,7 @@ fn main() {
         parse::parse_source(nano_parser_gen::lexer::SourceFile::from(
             r#"
 // test comment 1
-ecli { "a", "b" } 
+ecli { "a", "b" }
 anmi { "a", "c" }
 
 /* Test comment 2 */

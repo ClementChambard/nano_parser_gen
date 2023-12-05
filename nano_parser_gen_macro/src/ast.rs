@@ -1,7 +1,7 @@
 use quote::ToTokens;
 use syn::{parse::Parse, parse2, token, Error, Expr, Ident, LitStr, Token, Type};
 
-use crate::preprocess_rust_code::{combine_spans, preprocess};
+use crate::preprocess_rust_code::{combine_spans, preprocess, preprocess_for_token};
 
 #[derive(Clone)]
 pub struct TypeDef {
@@ -24,14 +24,34 @@ pub struct TokenDeclRegex {
     pub name: Ident,
     pub eq_token: Token![=],
     pub regex: LitStr,
+    pub read: Option<(Token![=>], Expr)>,
 }
 
 impl Parse for TokenDeclRegex {
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+        let name = input.parse()?;
+        let eq_token = input.parse()?;
+        let regex = input.parse()?;
+        let lookahead = input.lookahead1();
+        let read = if lookahead.peek(Token![=>]) {
+            let arr = input.parse()?;
+            let group: proc_macro2::Group = input.parse()?;
+            let preprocessed_tokens = preprocess_for_token(
+                [proc_macro2::TokenTree::Group(group.into())]
+                    .into_iter()
+                    .collect::<proc_macro2::TokenStream>()
+                    .into(),
+            );
+            let parsed = parse2(preprocessed_tokens.into())?;
+            Some((arr, parsed))
+        } else {
+            None
+        };
         Ok(Self {
-            name: input.parse()?,
-            eq_token: input.parse()?,
-            regex: input.parse()?,
+            name,
+            eq_token,
+            regex,
+            read,
         })
     }
 }

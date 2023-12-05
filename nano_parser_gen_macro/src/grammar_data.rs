@@ -10,8 +10,8 @@ use crate::{
 };
 
 pub enum TokenD {
-    Regex(Ident, LitStr, Option<Type>),
-    Exact(Ident, LitStr, Option<Type>),
+    Regex(Ident, LitStr, Option<Type>, Option<Expr>),
+    Exact(Ident, LitStr, Option<Type>, Option<Expr>),
 }
 
 pub struct AstFuncD {
@@ -161,15 +161,31 @@ impl GrammarData {
                             Ident::new(&id_txt, lit.span()),
                             lit.clone(),
                             t.clone().map(|d| d.ty),
+                            None,
                         ));
                         terms.push(id_txt);
                     }
-                    TokenDecl::Regex(ref t, TokenDeclRegex { name, regex, .. }) => {
-                        tokens.push(TokenD::Regex(
-                            name.clone(),
-                            regex.clone(),
-                            t.clone().map(|d| d.ty),
-                        ));
+                    TokenDecl::Regex(
+                        ref t,
+                        TokenDeclRegex {
+                            name, regex, read, ..
+                        },
+                    ) => {
+                        if let Some((_, e)) = read {
+                            tokens.push(TokenD::Regex(
+                                name.clone(),
+                                regex.clone(),
+                                t.clone().map(|d| d.ty),
+                                Some(e.clone()),
+                            ));
+                        } else {
+                            tokens.push(TokenD::Regex(
+                                name.clone(),
+                                regex.clone(),
+                                t.clone().map(|d| d.ty),
+                                None,
+                            ));
+                        }
                         terms.push(name.to_string());
                     }
                 },
@@ -203,14 +219,14 @@ impl GrammarData {
                                 return Err(Error::new_spanned(lit, "Unknown token"));
                             }
                             let ty = tokens.iter().find_map(|t| match t {
-                                TokenD::Exact(a, _, t) => {
+                                TokenD::Exact(a, _, t, _) => {
                                     if a.to_string() == lit_v {
                                         t.clone()
                                     } else {
                                         None
                                     }
                                 }
-                                TokenD::Regex(a, _, t) => {
+                                TokenD::Regex(a, _, t, _) => {
                                     if a.to_string() == lit_v {
                                         t.clone()
                                     } else {
@@ -226,14 +242,14 @@ impl GrammarData {
                             let id_v = id.to_string();
                             if terms.contains(&id_v) {
                                 let ty = tokens.iter().find_map(|t| match t {
-                                    TokenD::Exact(a, _, t) => {
+                                    TokenD::Exact(a, _, t, _) => {
                                         if a.to_string() == id_v {
                                             t.clone()
                                         } else {
                                             None
                                         }
                                     }
-                                    TokenD::Regex(a, _, t) => {
+                                    TokenD::Regex(a, _, t, _) => {
                                         if a.to_string() == id_v {
                                             t.clone()
                                         } else {
@@ -463,14 +479,14 @@ impl GrammarData {
                         self.tokens
                             .iter()
                             .find_map(|t| match t {
-                                TokenD::Regex(i, _, _) => {
+                                TokenD::Regex(i, _, _, _) => {
                                     if i.to_string() == terminal {
                                         Some(i)
                                     } else {
                                         None
                                     }
                                 }
-                                TokenD::Exact(i, _, _) => {
+                                TokenD::Exact(i, _, _, _) => {
                                     if i.to_string() == terminal {
                                         Some(i)
                                     } else {
@@ -577,7 +593,7 @@ impl GrammarData {
         let mut quote3 = quote!();
         for t in &self.tokens {
             match t {
-                TokenD::Exact(a, _, t) | TokenD::Regex(a, _, t) => {
+                TokenD::Exact(a, _, t, _) | TokenD::Regex(a, _, t, _) => {
                     if let Some(t) = t {
                         quote = quote! { #quote
                         #[allow(non_camel_case_types)]
@@ -620,14 +636,23 @@ impl GrammarData {
         let mut impl_quote = quote!();
         for t in &self.tokens {
             let q2 = match t {
-                TokenD::Exact(a, _, t) | TokenD::Regex(a, _, t) => {
+                TokenD::Exact(a, _, t, e) | TokenD::Regex(a, _, t, e) => {
                     let fident = syn::Ident::new(&format!("make_{}", a.to_string()), a.span());
 
                     if let Some(t) = t {
-                        quote! {
-                            #[allow(non_snake_case)]
-                            fn #fident (s: &str) -> Self {
-                                Self:: #a ( #t ::from_lexed(s))
+                        if let Some(e) = e {
+                            quote! {
+                                #[allow(non_snake_case)]
+                                fn #fident (__s__: &str) -> Self {
+                                    Self:: #a ( #e )
+                                }
+                            }
+                        } else {
+                            quote! {
+                                #[allow(non_snake_case)]
+                                fn #fident (__s__: &str) -> Self {
+                                    Self:: #a ( #t ::from_lexed(__s__))
+                                }
                             }
                         }
                     } else {
@@ -647,12 +672,12 @@ impl GrammarData {
         let mut lexer_quote = quote! { Lexer::builder() };
         for t in &self.tokens {
             match t {
-                TokenD::Regex(a, r, _) => {
+                TokenD::Regex(a, r, _, _) => {
                     let fident = syn::Ident::new(&format!("make_{}", a.to_string()), a.span());
                     lexer_quote =
                         quote! { #lexer_quote .token(#r, Box::new(TokenType:: #fident), false)};
                 }
-                TokenD::Exact(a, v, _) => {
+                TokenD::Exact(a, v, _, _) => {
                     let fident = syn::Ident::new(&format!("make_{}", a.to_string()), a.span());
                     lexer_quote =
                         quote! { #lexer_quote .token(#v, Box::new(TokenType:: #fident), true)};

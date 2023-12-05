@@ -4,7 +4,7 @@ use super::Token;
 
 pub struct Tokens<'l, T> {
     lexer: &'l Lexer<T>,
-    source: SourceFile,
+    pub source: SourceFile,
     position: usize,
     eof: bool,
 }

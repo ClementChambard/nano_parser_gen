@@ -40,8 +40,6 @@ nano_parser_gen_macro::grammar! {
 
 %token <String> id = "[a-zA-Z_][a-zA-Z_0-9]*"
 
-%token <String> insraw = "ins_[0-9]+"
-
 %token kw_ecli     = "ecli\\b"
 %token kw_anmi     = "anmi\\b"
 %token kw_sub      = "sub\\b"
@@ -61,8 +59,10 @@ nano_parser_gen_macro::grammar! {
 %token kw_int      = "int\\b"
 %token kw_float    = "float\\b"
 %token kw_async    = "async\\b"
+%token kw_bh       = "BulletHandler\\b"
 
-%token <String> str   = "\"([^\\\\\"]|\\\\.)*?\""
+%token <i32>    instr = "ins_[0-9]+"              => { $[4..].parse().unwrap() }
+%token <String> str   = "\"([^\\\\\"]|\\\\.)*?\"" => { nano_parser_gen::util::read_strlit($) }
 %token <i32>    int   = "([1-9][0-9]*|0x[0-9a-fA-F]+|0b[01]+|0[0-7]*|'(\\\\.|[^\\\\'])')"
 %token <f32>    float = "([0-9]*\\.[0-9]+(([eE][-+]?\\d+)|f)?|[0-9]+\\.[0-9]*(([eE][-+]?\\d+)|f)?|[0-9]+([eE][-+]?\\d+|f))"
 
@@ -168,11 +168,7 @@ Instr ::= id Instr_sub
                 InstrSub::Affect(e) => @@.assign_binding(&$0, e),
             };
         }
-        | insraw "(" Param_list ")" ";"
-        {
-            let i = $0[4..].parse::<i32>().unwrap();
-            $$ = ast::Instr::Call(i, $2, @@.time, @@.rank);
-        }
+        | instr "(" Param_list ")" ";" { $$ = ast::Instr::Call($0, $2, @@.time, @@.rank); }
         | BlocInstr
         {
             $$ = if $0.is_empty() {

@@ -1,3 +1,5 @@
+use crate::error::error_header;
+use crate::error::source_quote::error_style;
 use crate::lexer::{Token, Tokens};
 
 #[derive(Clone)]
@@ -106,10 +108,8 @@ pub fn parse<
     while !symbols_to_derive.is_empty() {
         let Some(ref cur_token) = cur_token_opt else { break; };
         let s = &symbols_to_derive[0];
-        // check error
         match s {
             RuleSymbol::NT(nt) => {
-                // println!("{:?}", nt);
                 if let Some(parsing_table_entry) =
                     get_production_table_entry(parse_table, *nt, cur_token.ty.no_data())
                 {
@@ -118,26 +118,41 @@ pub fn parse<
                     fn_stack.extend(parsing_table_entry.ast_func.to_vec());
                     rule_symbols.extend(symbols_to_derive.into_iter().skip(1));
                     symbols_to_derive = rule_symbols;
-                    // println!(
-                    //     "{:?}\n{:?}\n{:?}\n{:?}\n",
-                    //     symbols_to_derive, fn_stack, node_stack, node_stack_sizes
-                    // );
                 } else {
+                    error_header("parser error");
+                    tokens
+                        .source
+                        .quote(cur_token.loc.line..cur_token.loc.line + 1)
+                        .highlight(&cur_token.loc)
+                        .underline('~', error_style())
+                        .color(error_style())
+                        .comment(
+                            format!("no entry for {:?}, {:?}", cur_token.ty.no_data(), nt),
+                            error_style(),
+                        )
+                        .dump();
                     return None;
                 }
             }
             RuleSymbol::T(t) => {
-                // println!("{:?}", t);
                 if *t == cur_token.ty.no_data() {
                     node_stack.push(AstParam::Token(cur_token.clone()));
                     *node_stack_sizes.last_mut().unwrap() += 1;
                     cur_token_opt = tokens.next();
                     symbols_to_derive = symbols_to_derive[1..].to_vec();
-                    // println!(
-                    //     "{:?}\n{:?}\n{:?}\n{:?}\n",
-                    //     symbols_to_derive, fn_stack, node_stack, node_stack_sizes
-                    // );
                 } else {
+                    error_header("parser error");
+                    tokens
+                        .source
+                        .quote_line(cur_token.loc.line)
+                        .highlight(&cur_token.loc)
+                        .underline('~', error_style())
+                        .color(error_style())
+                        .comment(
+                            format!("wrong token {:?}, expected {:?}", cur_token.ty.no_data(), t),
+                            error_style(),
+                        )
+                        .dump();
                     return None;
                 }
             }

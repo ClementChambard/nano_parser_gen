@@ -6,6 +6,6 @@ mod tokens;
 
 pub use builder::LexerBuilder;
 pub use lexer_struct::Lexer;
-pub use source_file::SourceFile;
+pub use source_file::{Location, SourceFile};
 pub use token::Token;
 pub use tokens::Tokens;

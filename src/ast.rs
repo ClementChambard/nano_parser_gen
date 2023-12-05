@@ -1,5 +1,3 @@
-use crate::error::TypingError;
-
 #[derive(Clone, Debug, Copy, PartialEq, Eq)]
 pub enum BinOp {
     Or,
@@ -20,38 +18,6 @@ pub enum BinOp {
     Mod,
 }
 
-impl BinOp {
-    pub fn check_typing(&self, e1: &Box<Expr>, e2: &Box<Expr>) -> Result<Type, TypingError> {
-        match self {
-            Self::Or | Self::And | Self::Xor | Self::BinOr | Self::BinAnd => {
-                match (e1.ty()?, e2.ty()?) {
-                    (Type::Int, Type::Int) => Ok(Type::Int),
-                    _ => Err(TypingError::from(
-                        "Logical and Bitwise operations are on integers",
-                    )),
-                }
-            }
-            Self::Eq
-            | Self::Ne
-            | Self::Lt
-            | Self::Le
-            | Self::Gt
-            | Self::Ge
-            | Self::Add
-            | Self::Sub
-            | Self::Mul
-            | Self::Div
-            | Self::Mod => match (e1.ty()?, e2.ty()?) {
-                (Type::Int, Type::Int) => Ok(Type::Int),
-                (Type::Float, Type::Float) => Ok(Type::Float),
-                _ => Err(TypingError::from(
-                    "Binary operations are for the same number type",
-                )),
-            },
-        }
-    }
-}
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum UnOp {
     Negate,
@@ -59,22 +25,6 @@ pub enum UnOp {
     Sin,
     Cos,
     Sqrt,
-}
-
-impl UnOp {
-    pub fn check_typing(&self, e: &Box<Expr>) -> Result<Type, TypingError> {
-        let t = e.ty()?;
-        match self {
-            Self::Negate | Self::Not => match t {
-                Type::Int | Type::Float => Ok(t),
-                _ => Err(TypingError::from("Must use number with Not or Negate")),
-            },
-            Self::Sin | Self::Cos | Self::Sqrt => match t {
-                Type::Float => Ok(t),
-                _ => Err(TypingError::from("Must use float with Sin, Cos or Sqrt")),
-            },
-        }
-    }
 }
 
 #[derive(Clone, Debug)]
@@ -86,25 +36,6 @@ pub enum Expr {
     Str(String),
     VarInt(i32),
     VarFloat(f32),
-}
-
-#[derive(Clone, Debug, Copy, PartialEq, Eq)]
-pub enum Type {
-    Int,
-    Float,
-    Str,
-}
-
-impl Expr {
-    pub fn ty(&self) -> Result<Type, TypingError> {
-        match self {
-            Self::Unary(op, e) => op.check_typing(e),
-            Self::Binary(op, e1, e2) => op.check_typing(e1, e2),
-            Self::Int(_) | Self::VarInt(_) => Ok(Type::Int),
-            Self::Float(_) | Self::VarFloat(_) => Ok(Type::Float),
-            Self::Str(_) => Ok(Type::Str),
-        }
-    }
 }
 
 #[derive(Clone, Debug)]
@@ -126,13 +57,6 @@ pub struct Ecl {
     pub ecli: Vec<String>,
     pub anmi: Vec<String>,
     pub subs: Vec<Sub>,
-}
-
-#[derive(Clone, Debug)]
-pub enum TimeLabel {
-    Set(i32),
-    Add(i32),
-    Sub(i32),
 }
 
 pub fn rank_label_spec(s: String) -> u8 {
