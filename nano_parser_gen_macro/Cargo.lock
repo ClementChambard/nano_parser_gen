@@ -4,7 +4,7 @@ version = 3
 
 [[package]]
 name = "nano_parser_gen_macro"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "proc-macro2",
  "quote",

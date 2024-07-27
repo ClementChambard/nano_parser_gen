@@ -1,4 +1,4 @@
-use crate::ast::Instr;
+use super::ast::Instr;
 
 use super::*;
 
@@ -31,7 +31,7 @@ impl BinExprPart {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Binding {
     name: String,
     offset: Option<usize>,
@@ -39,7 +39,7 @@ pub struct Binding {
     assigned: bool,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum BindingT {
     Int(Binding),
     Float(Binding),
@@ -63,7 +63,7 @@ impl BindingT {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Scope {
     bindings: Vec<BindingT>,
     cur_offset: usize,
@@ -142,6 +142,7 @@ impl Scope {
         e: &ast::Expr,
         time: usize,
         rank: u8,
+        i: usize,
     ) -> Option<ast::Instr> {
         let binding = self.bindings.iter_mut().find(|b| match b {
             BindingT::Int(b) | BindingT::Float(b) => b.name == name,
@@ -154,11 +155,11 @@ impl Scope {
                     self.cur_offset += 1;
                     self.max_offset = self.cur_offset.max(self.max_offset);
                 }
-                Some(ast::Instr::AffectFloat(
-                    (b.offset.unwrap() * 4) as f32,
-                    e.clone(),
+                Some(ast::Instr::new(
+                    ast::InstrType::AffectFloat((b.offset.unwrap() * 4) as f32, e.clone()),
                     time,
                     rank,
+                    i,
                 ))
             }
             BindingT::Int(b) => {
@@ -168,33 +169,47 @@ impl Scope {
                     self.cur_offset += 1;
                     self.max_offset = self.cur_offset.max(self.max_offset);
                 }
-                Some(ast::Instr::AffectInt(
-                    (b.offset.unwrap() * 4) as i32,
-                    e.clone(),
+                Some(ast::Instr::new(
+                    ast::InstrType::AffectInt((b.offset.unwrap() * 4) as i32, e.clone()),
                     time,
                     rank,
+                    i,
                 ))
             }
         }
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
+pub struct Label {
+    pub s: String,
+    pub i: usize,
+}
+
+#[derive(Clone, Debug)]
 pub struct ParserData {
+    pub labels: Vec<Label>,
     scope: Vec<Scope>,
     pub instrs: Vec<Instr>,
     pub rank: u8,
     pub time: usize,
+    pub i: usize,
 }
 
 impl ParserData {
     pub fn new() -> Self {
         Self {
             scope: vec![],
+            labels: vec![],
             rank: 255,
             instrs: Vec::new(),
             time: 0,
+            i: 0,
         }
+    }
+
+    pub fn add_label(&mut self, name: String) {
+        self.labels.push(Label { s: name, i: self.i });
     }
 
     pub fn add_int(&mut self, name: String) {
@@ -248,7 +263,7 @@ impl ParserData {
 
     pub fn assign_binding(&mut self, name: &str, e: ast::Expr) -> ast::Instr {
         for s in self.scope.iter_mut().rev() {
-            if let Some(a) = s.assign_binding(&name, &e, self.time, self.rank) {
+            if let Some(a) = s.assign_binding(&name, &e, self.time, self.rank, self.i) {
                 return a;
             }
         }

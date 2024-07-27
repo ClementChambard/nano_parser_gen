@@ -1,12 +1,19 @@
+mod decls;
+mod rules;
+mod template;
+
+pub use rules::{AstFuncD, RuleD, RuleSymbolD};
+pub use template::TemplateParamType;
+
 use std::collections::{HashMap, HashSet};
 
-use proc_macro2::{Ident, Span, TokenStream};
+use proc_macro2::{Span, TokenStream};
 use quote::quote;
-use syn::{Error, Expr, LitStr, Type};
+use syn::{Expr, Ident, LitStr, Type};
 
 use crate::{
-    ast::{DeclType, GrammarContentDecls, RuleEntity, Rules, TokenDecl, TokenDeclRegex},
-    preprocess_rust_code::convert_litteral,
+    grammar::rules::RuleProcessingData,
+    parsing::{decls::GrammarContentDecls, rules::Rules},
 };
 
 pub enum TokenD {
@@ -14,126 +21,19 @@ pub enum TokenD {
     Exact(Ident, LitStr, Option<Type>, Option<Expr>),
 }
 
-pub struct AstFuncD {
-    func: Expr,
-    after: usize,
-    last: bool,
-    name: Ident,
-}
-
-#[derive(Clone)]
-pub enum RuleSymbolD {
-    T(Ident, Option<Type>),
-    NT(Ident),
-    Epsilon,
-}
-impl RuleSymbolD {
-    pub fn is_epsilon(&self) -> bool {
+impl TokenD {
+    pub fn get_term_name(&self) -> Ident {
         match self {
-            Self::Epsilon => true,
-            _ => false,
+            Self::Regex(i, _, _, _) => i.clone(),
+            Self::Exact(i, _, _, _) => i.clone(),
         }
-    }
-}
-
-impl ToString for RuleSymbolD {
-    fn to_string(&self) -> String {
-        match self {
-            Self::T(i, _) => i.to_string(),
-            Self::NT(i) => i.to_string(),
-            Self::Epsilon => "<none>".to_string(),
-        }
-    }
-}
-
-pub struct RuleD {
-    left: Ident,
-    symbols: Vec<RuleSymbolD>,
-    ast_funcs: Vec<AstFuncD>,
-}
-
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
-pub enum AstFuncParamMode {
-    TokenGetVal,
-    TokenEmpty,
-    AstNode,
-}
-
-impl RuleD {
-    pub fn ast_func(&self, parser_type: &syn::Type) -> TokenStream {
-        let mut q = quote!();
-        for ast in &self.ast_funcs {
-            let mut type_names = Vec::new();
-            let mut param_type = Vec::new();
-            let mut mappings = Vec::new();
-            for (i, p) in self.symbols[..ast.after].iter().enumerate() {
-                match p {
-                    RuleSymbolD::Epsilon => {
-                        type_names.push(Ident::new("NONE", Span::call_site()));
-                        param_type.push(AstFuncParamMode::TokenEmpty);
-                    }
-                    RuleSymbolD::T(tt, ty) => {
-                        type_names.push(tt.clone());
-                        if ty.is_some() {
-                            param_type.push(AstFuncParamMode::TokenGetVal);
-                        } else {
-                            param_type.push(AstFuncParamMode::TokenEmpty);
-                        }
-                    }
-                    RuleSymbolD::NT(tt) => {
-                        type_names.push(tt.clone());
-                        param_type.push(AstFuncParamMode::AstNode);
-                    }
-                }
-                mappings.push(Ident::new(&format!("__mapping_{i}__"), ast.name.span()));
-            }
-            let return_id = Ident::new("__return__", ast.name.span());
-            let params_id = Ident::new("__params__", ast.name.span());
-            let parser_data_id = Ident::new("__parser_data__", ast.name.span());
-            let mut ast_q = quote!();
-            for (i, ((m, t), c)) in mappings.iter().zip(type_names).zip(param_type).enumerate() {
-                match c {
-                    AstFuncParamMode::TokenEmpty => {}
-                    AstFuncParamMode::TokenGetVal => {
-                        ast_q = quote! { #ast_q let AstParam::Token(Token { ty: TokenType:: #t (mut #m), .. }) = #params_id[#i].clone() else { panic!() }; };
-                    }
-                    AstFuncParamMode::AstNode => {
-                        ast_q = quote! { #ast_q let AstParam::Ast(AstNode:: #t (mut #m)) = #params_id[#i].clone() else { panic!() }; };
-                    }
-                }
-            }
-            let name = ast.name.clone();
-            let output_type = self.left.clone();
-            let e = ast.func.clone();
-            let ast_q = if ast.last {
-                quote! {
-                    #[allow(non_snake_case)]
-                    fn #name (#[allow(non_snake_case)] #params_id: &[AstParam], #[allow(non_snake_case)] #parser_data_id: &mut #parser_type) -> AstParam {
-                        #ast_q
-                        let mut #return_id;
-                        #e
-                        AstParam::Ast(AstNode:: #output_type(#return_id))
-                    }
-                }
-            } else {
-                quote! {
-                    #[allow(non_snake_case)]
-                    fn #name (#[allow(non_snake_case)] #params_id: &[AstParam], #[allow(non_snake_case)] #parser_data_id: &mut #parser_type) {
-                        #ast_q
-                        #e
-                    }
-                }
-            };
-            q = quote!( #q #ast_q );
-        }
-        q
     }
 }
 
 pub struct GrammarData {
     tokens: Vec<TokenD>,
     skip: Vec<LitStr>,
-    parser_data: Type,
+    parser_data: Option<Type>,
     types: Vec<(Ident, Type)>,
     start: Ident,
     nterms: Vec<String>,
@@ -144,167 +44,23 @@ pub struct GrammarData {
 
 impl GrammarData {
     pub fn new(before: GrammarContentDecls, after: Rules) -> syn::Result<Self> {
-        let mut tokens = Vec::new();
-        let mut skip = Vec::new();
-        let mut parser_data = None;
-        let mut types = Vec::new();
-        let mut start = None;
-        let mut rules = Vec::new();
-        let mut terms = Vec::new();
-        let mut nterms = Vec::new();
-        for decl in &before.decls {
-            match &decl.decl {
-                DeclType::Token(t) => match t {
-                    TokenDecl::Exact(ref t, lit) => {
-                        let id_txt = convert_litteral(&lit.value());
-                        tokens.push(TokenD::Exact(
-                            Ident::new(&id_txt, lit.span()),
-                            lit.clone(),
-                            t.clone().map(|d| d.ty),
-                            None,
-                        ));
-                        terms.push(id_txt);
-                    }
-                    TokenDecl::Regex(
-                        ref t,
-                        TokenDeclRegex {
-                            name, regex, read, ..
-                        },
-                    ) => {
-                        if let Some((_, e)) = read {
-                            tokens.push(TokenD::Regex(
-                                name.clone(),
-                                regex.clone(),
-                                t.clone().map(|d| d.ty),
-                                Some(e.clone()),
-                            ));
-                        } else {
-                            tokens.push(TokenD::Regex(
-                                name.clone(),
-                                regex.clone(),
-                                t.clone().map(|d| d.ty),
-                                None,
-                            ));
-                        }
-                        terms.push(name.to_string());
-                    }
-                },
-                DeclType::Skip(s) => skip.push(s.clone()),
-                DeclType::ParserData(p) => parser_data = Some(p.clone()),
-                DeclType::Start(s) => start = Some(s.clone()),
-                DeclType::Type(t, i) => {
-                    for id in i {
-                        nterms.push(id.to_string());
-                        types.push((id.clone(), t.ty.clone()));
-                    }
-                }
-            }
-        }
-        let start = start.expect("Expected start symbol (%start [symbol])");
-        let parser_data = parser_data.expect("Expected parserdata type (%parserdata [type])");
-        for r in &after.rules {
-            for (i, sr) in r.subrules.iter().enumerate() {
-                let mut symbols = Vec::new();
-                let mut ast_funcs = Vec::new();
-                let mut after = 0;
-                let mut ast_func_id = 0;
-                for e in &sr.entities {
-                    match e {
-                        RuleEntity::Epsilon(_) => {
-                            symbols.push(RuleSymbolD::Epsilon);
-                        }
-                        RuleEntity::Exact(lit) => {
-                            let lit_v = convert_litteral(&lit.value());
-                            if !terms.contains(&lit_v) {
-                                return Err(Error::new_spanned(lit, "Unknown token"));
-                            }
-                            let ty = tokens.iter().find_map(|t| match t {
-                                TokenD::Exact(a, _, t, _) => {
-                                    if a.to_string() == lit_v {
-                                        t.clone()
-                                    } else {
-                                        None
-                                    }
-                                }
-                                TokenD::Regex(a, _, t, _) => {
-                                    if a.to_string() == lit_v {
-                                        t.clone()
-                                    } else {
-                                        None
-                                    }
-                                }
-                            });
-                            let id = Ident::new(&lit_v, lit.span());
-                            symbols.push(RuleSymbolD::T(id, ty));
-                            after += 1;
-                        }
-                        RuleEntity::Ident(id) => {
-                            let id_v = id.to_string();
-                            if terms.contains(&id_v) {
-                                let ty = tokens.iter().find_map(|t| match t {
-                                    TokenD::Exact(a, _, t, _) => {
-                                        if a.to_string() == id_v {
-                                            t.clone()
-                                        } else {
-                                            None
-                                        }
-                                    }
-                                    TokenD::Regex(a, _, t, _) => {
-                                        if a.to_string() == id_v {
-                                            t.clone()
-                                        } else {
-                                            None
-                                        }
-                                    }
-                                });
-                                symbols.push(RuleSymbolD::T(id.clone(), ty));
-                            } else if nterms.contains(&id_v) {
-                                symbols.push(RuleSymbolD::NT(id.clone()));
-                            } else {
-                                return Err(Error::new_spanned(id, "Unknown symbol"));
-                            }
-                            after += 1;
-                        }
-                        RuleEntity::AstFunc(a) => {
-                            ast_funcs.push(AstFuncD {
-                                func: a.clone(),
-                                after,
-                                last: false,
-                                name: Ident::new(
-                                    &format!("{}_{}_{}", r.left.to_string(), i, ast_func_id),
-                                    r.left.span(),
-                                ),
-                            });
-                            ast_func_id += 1;
-                        }
-                    }
-                }
-                if let Some(a) = ast_funcs.last_mut() {
-                    let l = symbols
-                        .iter()
-                        .filter(|s| !s.is_epsilon())
-                        .collect::<Vec<_>>()
-                        .len();
-                    if a.after < l && l > 0 {
-                        return Err(Error::new_spanned(
-                            r.left.clone(),
-                            "This rule has no final ast production rule",
-                        ));
-                    }
-                    a.last = true;
-                } else {
-                    return Err(Error::new_spanned(
-                        r.left.clone(),
-                        "This rule has no ast production rule",
-                    ));
-                }
-                rules.push(RuleD {
-                    left: r.left.clone(),
-                    symbols,
-                    ast_funcs,
-                });
-            }
-        }
+        let (tokens, skip, parser_data, types, start, templates) = decls::process(before)?;
+        let terms = tokens
+            .iter()
+            .map(|t| t.get_term_name().to_string())
+            .collect::<Vec<_>>();
+        let (mut nterms, mut types) = rules::complete_nterms(types, &after);
+        let (rules, o_t) = rules::process(
+            &after.rules,
+            &RuleProcessingData {
+                tokens: &tokens,
+                terms: &terms,
+                types: &types,
+                templates,
+            },
+        )?;
+        nterms.extend(o_t.iter().map(|(i, _)| i.to_string()));
+        types.extend(o_t);
         let mut this = Self {
             tokens,
             skip,
@@ -687,6 +443,18 @@ impl GrammarData {
         for t in &self.skip {
             lexer_quote = quote! { #lexer_quote .skip(#t) };
         }
+
+        // if no parserdata: make default one:
+        if self.parser_data.is_none() {
+            quote = quote! { #quote
+                #[derive(Clone)]
+                pub struct DefaultParserType {}
+                impl DefaultParserType {
+                    pub fn new() -> Self { Self {} }
+                }
+            };
+        }
+
         // pub type Lexer = nano_parser_gen::lexer::Lexer<fn(&str) -> TokenType, TokenType>;
         quote = quote! { #quote
             pub type Lexer = nano_parser_gen::lexer::Lexer<TokenType>;
@@ -696,7 +464,11 @@ impl GrammarData {
             }
         };
 
-        let parser_data_type = self.parser_data.clone();
+        let default_parser_data_type: proc_macro::TokenStream = quote!(DefaultParserType).into();
+        let parser_data_type = self
+            .parser_data
+            .clone()
+            .unwrap_or(syn::parse::<Type>(default_parser_data_type).unwrap());
         let mut q = quote!();
         let mut q2 = quote!();
         let mut q3 = quote!();
@@ -718,32 +490,36 @@ impl GrammarData {
             .expect("No type for start item")
             .1
             .clone();
+
         quote = quote! { #quote
 
-            #[derive(Clone, Debug)]
-            pub enum AstNode {
+        #[derive(Clone, Debug)]
+        pub enum AstNode {
             #q
         }
-            impl nano_parser_gen::parser::NoData<AstNodeNoData> for AstNode {
-                fn no_data(&self) -> AstNodeNoData {
-                    match self {
-                        #q3
-                    }
+
+        impl nano_parser_gen::parser::NoData<AstNodeNoData> for AstNode {
+            fn no_data(&self) -> AstNodeNoData {
+                match self {
+                    #q3
                 }
             }
-            #[derive(Clone, Debug, Eq, PartialEq, Copy)]
-            pub enum AstNodeNoData {
+        }
+
+        #[derive(Clone, Debug, Eq, PartialEq, Copy)]
+        pub enum AstNodeNoData {
             #q2
         }
+
         pub type Symbol = nano_parser_gen::parser::RuleSymbol<TokenTypeNoData, AstNodeNoData>;
         pub type AstParam = nano_parser_gen::parser::AstParam<Token, AstNode>;
         pub type AstFunc = nano_parser_gen::parser::AstFunc<Token, AstNode, #parser_data_type>;
         pub type ParseTableEntry = nano_parser_gen::parser::ParseTableEntry<Token, TokenTypeNoData, AstNode, AstNodeNoData, #parser_data_type>;
 
         pub fn parse<'r>(tokens: nano_parser_gen::lexer::Tokens<'r, TokenType>) -> #start_type {
-                let Some(AstParam::Ast(AstNode:: #start_item (s))) = nano_parser_gen::parser::parse(PARSE_TABLE, AstNodeNoData:: #start_item, tokens, #parser_data_type ::new()) else { panic!("Parser error"); };
-                s
-            }
+            let Some(AstParam::Ast(AstNode:: #start_item (s))) = nano_parser_gen::parser::parse(PARSE_TABLE, AstNodeNoData:: #start_item, tokens, #parser_data_type ::new()) else { panic!("Parser error"); };
+            s
+        }
 
         pub fn parse_source(source: nano_parser_gen::lexer::SourceFile) -> #start_type {
             parse(lexer().tokens(&source))
@@ -752,14 +528,12 @@ impl GrammarData {
         };
 
         for r in &self.rules {
-            let r = r.ast_func(&self.parser_data);
+            let r = r.ast_func(&parser_data_type);
             quote = quote!( #quote #r );
         }
+
         let parse_table_entries = self.fill_ll1_production_table();
-        quote = quote!( #quote
-        const PARSE_TABLE: &[ParseTableEntry] =
-                #parse_table_entries;
-        );
+        quote = quote!( #quote pub const PARSE_TABLE: &[ParseTableEntry] = #parse_table_entries; );
 
         quote.into()
     }

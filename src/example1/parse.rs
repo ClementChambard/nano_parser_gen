@@ -3,6 +3,7 @@ pub mod util;
 use util::{BinExprPart, InstrSub, ParserData};
 
 use super::ast;
+use ast::{Instr, InstrType};
 
 nano_parser_gen_macro::grammar! {
 
@@ -72,65 +73,37 @@ nano_parser_gen_macro::grammar! {
 
 %type <ast::Ecl>                Ecl
 %type <ast::Param>              DefParam
-%type <Vec<ast::Param>>         DefParam_list DefParam_list2
-%type <Vec<String>>             Anmi Ecli Comma_sep_str2 Comma_sep_str_opt
+%type <Vec<String>>             Anmi Ecli
 %type <ast::Sub>                Sub
-%type <Vec<ast::Sub>>           SubList
 %type <ast::Instr>              Instr ElseIf
-%type <Vec<ast::Instr>>         BlocInstr InstrList
-%type <Option<Box<ast::Instr>>> OptElse
+%type <Vec<ast::Instr>>         BlocInstr
+%type <Box<ast::Instr>>         Else
 %type <InstrSub>                Instr_sub
-%type <Option<i32>>             AsyncOpt
-%type <i32>                     AsyncNumOpt
+%type <i32>                     AsyncNumOpt Async
 %type <u8>                      RankLabel
-%type <ast::Expr>               Expr ExprOR ExprAN ExprBO ExprXO ExprBA ExprEQ
+%type <ast::Expr>               Expr ExprOR ExprAN ExprBO ExprXO ExprBA ExprEQ Affect
 %type <ast::Expr>               ExprCM ExprPM ExprTD ExprUN ExprPrimitive VarExpr MinusVarExpr
 %type <BinExprPart>             ExprORp ExprANp ExprBOp ExprXOp ExprBAp ExprEQp ExprCMp ExprPMp ExprTDp
-%type <Option<ast::Expr>>       OptAffect
-%type <Vec<ast::Expr>>          Param_list Param_list2
 
 %start Ecl
 %%
-Comma_sep_str_opt ::= str Comma_sep_str2 { $1.insert(0, $0); $$ = $1; }
-                    | <none>             { $$ = Vec::new(); }
-                    ;
 
-Comma_sep_str2 ::= "," str Comma_sep_str2  { $2.insert(0, $1); $$ = $2; }
-                 | <none>                  { $$ = Vec::new(); }
-                 ;
+Ecl ::= Ecli Option<Anmi> List<Sub>              { $$ = ast::Ecl{ ecli: $0, anmi: $1.unwrap_or(Vec::new()), subs: $2 }; }
+      | Anmi Option<Ecli> List<Sub>              { $$ = ast::Ecl{ anmi: $0, ecli: $1.unwrap_or(Vec::new()), subs: $2 }; }
+      | List<Sub>                                { $$ = ast::Ecl{ anmi: Vec::new(), ecli: Vec::new(), subs: $0 }; }
+      ;
 
-Param_list ::= Expr Param_list2          { $1.insert(0, $0); $$ = $1; }
-             | <none>                    { $$ = Vec::new(); }
-             ;
+Ecli ::= kw_ecli "{" SepList<str, ","> "}" { $$ = $2; };
 
-Param_list2 ::= "," Expr Param_list2     { $2.insert(0, $1); $$ = $2; }
-              | <none>                   { $$ = Vec::new(); }
-              ;
-
-DefParam_list ::= DefParam DefParam_list2 { $1.insert(0, $0); $$ = $1; }
-                | <none>                  { $$ = Vec::new(); }
-                ;
-
-DefParam_list2 ::= "," DefParam DefParam_list2 { $2.insert(0, $1); $$ = $2; }
-                 | <none>                      { $$ = Vec::new(); }
-                 ;
+Anmi ::= kw_anmi "{" SepList<str, ","> "}" { $$ = $2; };
 
 DefParam ::= kw_int id                   { $$ = ast::Param::Int($1); }
            | kw_float id                 { $$ = ast::Param::Float($1); }
            ;
 
-Ecl ::= Ecli Anmi SubList                { $$ = ast::Ecl{ ecli: $0, anmi: $1, subs: $2 }; };
-
-Ecli ::= kw_ecli "{" Comma_sep_str_opt "}" { $$ = $2; };
-
-Anmi ::= kw_anmi "{" Comma_sep_str_opt "}" { $$ = $2; };
-
-SubList ::= Sub SubList                  { $1.insert(0, $0); $$ = $1; }
-          | <none>                       { $$ = Vec::new(); }
-          ;
-
-Sub ::= kw_sub id "(" DefParam_list ")"
+Sub ::= kw_sub id "(" SepList<DefParam, ","> ")"
         {
+            @@.i = 0;
             @@.time = 0;
             @@.rank = 255;
             @@.push_scope();
@@ -143,116 +116,110 @@ Sub ::= kw_sub id "(" DefParam_list ")"
         }
         BlocInstr
         {
-            $$ = ast::Sub{ name: $1, params: $3, bloc: $5, max_offset: @@.max_offset() * 4 };
+            $$ = ast::Sub::new($1, $3, $5, @@.max_offset());
             @@.pop_scope();
+            @@.labels.clear();
         };
 
 BlocInstr ::= {
                   @@.push_scope();
               }
-              "{" InstrList "}"
+              "{" List<Instr> "}"
               {
                   @@.pop_scope();
-                  $$ = $1.into_iter().filter(|i| i.is_some()).collect();
+                  $$ = $1;
               };
-
-InstrList ::= Instr InstrList            { $1.insert(0, $0); $$ = $1; }
-            | <none>                     { $$ = Vec::new(); }
-            ;
 
 Instr ::= id Instr_sub
         {
             $$ = match $1 {
-                InstrSub::Call(e_l) => ast::Instr::Call(0, e_l, @@.time, @@.rank), // todo: get name from $0
-                InstrSub::Label => ast::Instr::Label($0),
+                InstrSub::Call(e_l) => Instr::new(InstrType::Call(0, e_l), @@.time, @@.rank, @@.i), // todo: get name from $0
+                InstrSub::Label => { @@.add_label($0); Instr::none() },
                 InstrSub::Affect(e) => @@.assign_binding(&$0, e),
             };
+            @@.i += 1;
         }
-        | instr "(" Param_list ")" ";" { $$ = ast::Instr::Call($0, $2, @@.time, @@.rank); }
+        | instr "(" SepList<Expr, ","> ")" ";" { $$ = Instr::new(InstrType::Call($0, $2), @@.time, @@.rank, @@.i); @@.i += 1; }
         | BlocInstr
         {
             $$ = if $0.is_empty() {
-                ast::Instr::None
+                Instr::none()
             } else {
-                ast::Instr::Bloc($0)
+                Instr::bloc($0)
             };
         }
         | int ":"
         {
-            $$ = ast::Instr::None;
+            $$ = Instr::none();
             @@.time = $0 as usize;
         }
         | "+" int ":"
         {
-            $$ = ast::Instr::None;
+            $$ = Instr::none();
             @@.time += $1 as usize;
         }
         | "-" int ":"
         {
-            $$ = ast::Instr::None;
+            $$ = Instr::none();
             @@.time -= $1 as usize;
         }
         | "!" RankLabel
         {
-            $$ = ast::Instr::None;
+            $$ = Instr::none();
             @@.rank = $1;
         }
-        | kw_goto id "@" int ";"         { $$ = ast::Instr::Goto($1, $3, @@.time, @@.rank); }
-        | kw_loop BlocInstr              { $$ = ast::Instr::Loop($1, @@.time, @@.rank); }
-        | kw_break ";"                   { $$ = ast::Instr::Break(@@.time, @@.rank); }
-        | kw_continue ";"                { $$ = ast::Instr::Continue(@@.time, @@.rank); }
-        | kw_return ";"                  { $$ = ast::Instr::Return(@@.time, @@.rank); }
-        | kw_delete ";"                  { $$ = ast::Instr::Delete(@@.time, @@.rank); }
-        | ";"                            { $$ = ast::Instr::None; }
+        | kw_goto id "@" int ";"         { $$ = Instr::new(InstrType::Goto($1, $3), @@.time, @@.rank, @@.i); @@.i += 1; }
+        | kw_loop BlocInstr              { $$ = Instr::new(InstrType::Loop($1), @@.time, @@.rank, @@.i); @@.i += 1; }
+        | kw_break ";"                   { $$ = Instr::new(InstrType::Break, @@.time, @@.rank, @@.i); @@.i += 1; }
+        | kw_continue ";"                { $$ = Instr::new(InstrType::Continue, @@.time, @@.rank, @@.i); @@.i += 1; }
+        | kw_return ";"                  { $$ = Instr::new(InstrType::Return, @@.time, @@.rank, @@.i); @@.i += 1; }
+        | kw_delete ";"                  { $$ = Instr::new(InstrType::Delete, @@.time, @@.rank, @@.i); @@.i += 1; }
+        | ";"                            { $$ = Instr::none(); }
         | kw_int id
         {
             @@.add_int($1);
         }
-        OptAffect ";"
+        Option<Affect> ";"
         {
             $$ = match $2 {
                 Some(a) => @@.assign_binding(&$1, a),
-                None => ast::Instr::None,
-            }
+                None => Instr::none(),
+            };
+            @@.i += 1;
         }
         | kw_float id
         {
             @@.add_float($1);
         }
-        OptAffect ";"
+        Option<Affect> ";"
         {
             $$ = match $2 {
                 Some(a) => @@.assign_binding(&$1, a),
-                None => ast::Instr::None,
-            }
+                None => Instr::none(),
+            };
+            @@.i += 1;
         }
-        | kw_while "(" Expr ")" BlocInstr  { $$ = ast::Instr::While($2, $4, @@.time, @@.rank); }
-        | kw_if "(" Expr ")" BlocInstr OptElse { $$ = ast::Instr::If($2, $4, $5, @@.time, @@.rank); }
-        | "@" id "(" Param_list ")" AsyncOpt ";" { $$ = ast::Instr::SubCall($1, $3, $5, @@.time, @@.rank); }
-        | kw_do BlocInstr kw_while "(" Expr ")" ";" { $$ = ast::Instr::DoWhile($4, $1, @@.time, @@.rank); }
+        | kw_while "(" Expr ")" BlocInstr  { $$ = Instr::new(InstrType::While($2, $4), @@.time, @@.rank, @@.i); @@.i += 1; }
+        | kw_if "(" Expr ")" BlocInstr Option<Else> { $$ = Instr::new(InstrType::If($2, $4, $5), @@.time, @@.rank, @@.i); @@.i += 1; }
+        | "@" id "(" SepList<Expr, ","> ")" Option<Async> ";" { $$ = Instr::new(InstrType::SubCall($1, $3, $5), @@.time, @@.rank, @@.i); @@.i += 1; }
+        | kw_do BlocInstr kw_while "(" Expr ")" ";" { $$ = Instr::new(InstrType::DoWhile($4, $1), @@.time, @@.rank, @@.i); @@.i += 1; }
         ;
 
-AsyncOpt ::= kw_async AsyncNumOpt        { $$ = Some($1); }
-           | <none>                      { $$ = None; }
-           ;
+Async ::= kw_async AsyncNumOpt        { $$ = $1; };
 
 AsyncNumOpt ::= "(" int ")"              { $$ = $1; }
               | <none>                   { $$ = -1; }
               ;
 
-OptAffect ::= "=" Expr                   { $$ = Some($1); }
-            | <none>                     { $$ = None; }
-            ;
+Affect ::= "=" Expr                   { $$ = $1; };
 
-OptElse ::= kw_else ElseIf               { $$ = Some(Box::new($1)); }
-          | <none>                       { $$ = None; }
-          ;
+Else ::= kw_else ElseIf               { $$ = Box::new($1); };
 
-ElseIf ::= BlocInstr                     { $$ = ast::Instr::Bloc($0); }
-         | kw_if "(" Expr ")" BlocInstr OptElse { $$ = ast::Instr::If($2, $4, $5, @@.time, @@.rank); }
+ElseIf ::= BlocInstr                     { $$ = Instr::bloc($0); }
+         | kw_if "(" Expr ")" BlocInstr Option<Else> { $$ = Instr::new(InstrType::If($2, $4, $5), @@.time, @@.rank, @@.i); @@.i += 1; }
          ;
 
-Instr_sub ::= "(" Param_list ")" ";"     { $$ = InstrSub::Call($1); }
+Instr_sub ::= "(" SepList<Expr, ","> ")" ";"     { $$ = InstrSub::Call($1); }
             | ":"                        { $$ = InstrSub::Label; }
             | "=" Expr ";"               { $$ = InstrSub::Affect($1); }
             ;
@@ -340,4 +307,5 @@ VarExpr ::= int                          { $$ = ast::Expr::VarInt($0); }
 MinusVarExpr ::= int                     { $$ = ast::Expr::VarInt(-$0); }
                | float                   { $$ = ast::Expr::VarFloat(-$0); }
                ;
+
 }
