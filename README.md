@@ -15,6 +15,7 @@ You can add Nano Parser Gen to your rust project using cargo.
 ## How to use
 
 You will need to create a type that will be used to share data around while parsing.
+
 It needs to derive `Clone` and contain at least a function `pub fn new() -> Self`.
 
 Example:
@@ -30,6 +31,7 @@ impl ParserData {
 ```
 
 If needed, define your ast nodes types.
+
 They need to derive `clone` and `debug`.
 
 You can now define the grammar of your language using the `grammar!` macro inside the crate `rust_parser_gen_macro`.
@@ -91,6 +93,7 @@ B ::= custom_int         { $$ = $0; }
 ```
 
 The macro defines the function `parse_source` that will parse a `SourceFile`.
+
 `SourceFile`s can be constructed with `SourceFile::from(source: &str)` or `SourceFile::open(filename: &str)`.
 
 Example:
@@ -102,3 +105,78 @@ fn main() {
     )));
 }
 ```
+
+## More examples
+
+More examples can be found in this repo, with a more extensive use of the parser generator
+
+## Other features
+
+### Code blocks
+
+Grammar rules for symbols are defined as follow:
+
+Symbol ::= Rule1 | Rule2 | Rule3 ... Rule4 ;
+
+Each rule is defined by its symbols (or '<none>') and must end with a code block, setting the '$$' variable as the output AST node of the symbol.
+
+It can also contain code blocks in between rule symbols and if so, they will be executed between the parsing of those symbols.
+
+Example:
+```rust
+Block ::= "{"
+             { /* Code to execute when entering a block */ }
+           BlockContent
+             { /* Code to execute on block exit */ }
+           "}"
+             { $$ = $1; }
+        ;
+```
+
+### What is ParserData
+
+During the parsing process, there will be one instance of `ParserData` that can be accessed in a code block with `@@`.
+
+Example
+```rust
+impl ParserData {
+    pub fn enter_block(&self) { /*...*/ }
+    pub fn exit_block(&self) { /*...*/ }
+}
+
+//...
+
+Block ::= "{"
+             { @@.enter_block(); }
+           BlockContent
+             { @@.exit_block(); }
+           "}"
+             { $$ = $1; }
+        ;
+```
+
+### Rule templates
+
+You can create rule templates to avoid code duplication.
+
+One of the builtin template is List<T: sym>. It has type `Vec<TypeOfT>` and correspond to a potentially empty list of 'T'.
+
+Possible way of implementing List<T: sym>:
+```rust
+// template params: `name: type`  with types  sym: any symbol,  tok: any token,  nt: any non terminal,  ty: a rust type
+%template<Vec<T>> List<T: sym> ::= T List<T>       { $1.insert(0, $0); $$ = $1; }
+                            | <none>               { $$ = Vec::new(); }
+                            ; 
+
+// ...
+
+A ::= "{" List<int> "}" { $$ = $1; };
+```
+
+Builtin templates:
+- Option<T: sym>               an optional symbol T                        type=`Option<TypeOfT>`
+- OptionB<T: sym>              an optional symbol T                        type=`bool` (true if option is `Some`)
+- List<T: sym>                 a list of symbol T                          type=`Vec<TypeOfT>`
+- List1<T: sym>                a non empty list of symbol T                type=`Vec<TypeOfT>`
+- SepList<T: sym, Sep: sym>    a Sep separated list of symbol T            type=`Vec<TypeOfT>`
+- SepList1<T: sym, Sep: sym>   a non empyt Sep separated list of symbol T  type=`Vec<TypeOfT>`
