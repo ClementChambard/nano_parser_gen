@@ -7,7 +7,9 @@ A small parser generator written in rust using procedural macros.
 You can add Nano Parser Gen to your rust project using cargo.
 
 ```cargo new <project name>```
+
 ```cd <project name>```
+
 ```cargo add nano_parser_gen nano_parser_gen_macro```
 
 ## How to use
