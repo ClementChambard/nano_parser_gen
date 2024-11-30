@@ -69,7 +69,7 @@ grammar! {
 
 // rules for the 'A' non terminal symbol
 A ::= "{" kw_add int B "}"
-             // You need to create the AST node and store it in '$$' for 'A', it is a i32
+             // You need to create the AST node and store it in '$$'. For symbol 'A', it is a i32
              {
                  // get the AST value of the nth element with '$n' (0 indexed)
                  $$ = $2 + $3;
@@ -94,8 +94,9 @@ The macro defines the function `parse_source` that will parse a `SourceFile`.
 Example:
 ```rust
 fn main() {
+    // This will print "15"
     println!("{}", parse_source(SourceFile::from(
         " {add 1 add 2 add 3 add 4   custom_5   }       // a comment"
-    )));.
+    )));
 }
 ```
