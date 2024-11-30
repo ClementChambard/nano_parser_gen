@@ -94,7 +94,7 @@ B ::= custom_int         { $$ = $0; }
 
 The macro defines the function `parse_source` that will parse a `SourceFile`.
 
-`SourceFile`s can be constructed with `SourceFile::from(source: &str)` or `SourceFile::open(filename: &str)`.
+SourceFiles can be constructed with `SourceFile::from(source: &str)` or `SourceFile::open(filename: &str)`.
 
 Example:
 ```rust
@@ -163,7 +163,11 @@ One of the builtin template is List<T: sym>. It has type `Vec<TypeOfT>` and corr
 
 Possible way of implementing List<T: sym>:
 ```rust
-// template params: `name: type`  with types  sym: any symbol,  tok: any token,  nt: any non terminal,  ty: a rust type
+// template params: `name: type`  with types
+//          - sym: any symbol
+//          - tok: any token
+//          - nt: any non terminal
+//          - ty: a rust type
 %template<Vec<T>> List<T: sym> ::= T List<T>       { $1.insert(0, $0); $$ = $1; }
                             | <none>               { $$ = Vec::new(); }
                             ; 
@@ -173,10 +177,13 @@ Possible way of implementing List<T: sym>:
 A ::= "{" List<int> "}" { $$ = $1; };
 ```
 
-Builtin templates:
-- Option<T: sym>               an optional symbol T                        type=`Option<TypeOfT>`
-- OptionB<T: sym>              an optional symbol T                        type=`bool` (true if option is `Some`)
-- List<T: sym>                 a list of symbol T                          type=`Vec<TypeOfT>`
-- List1<T: sym>                a non empty list of symbol T                type=`Vec<TypeOfT>`
-- SepList<T: sym, Sep: sym>    a Sep separated list of symbol T            type=`Vec<TypeOfT>`
-- SepList1<T: sym, Sep: sym>   a non empyt Sep separated list of symbol T  type=`Vec<TypeOfT>`
+#### Builtin templates:
+
+| Template name                | Description                                    | Type              |
+|------------------------------|------------------------------------------------|-------------------|
+| `Option<T: sym>`             | an optional symbol `T`                         | `Option<TypeOfT>` |
+| `OptionB<T: sym>`            | an optional symbol `T`                         | `bool` (true if option is `Some`) |
+| `List<T: sym>`               | a list of symbol `T`                           | `Vec<TypeOfT>`    |
+| `List1<T: sym>`              | a non empty list of symbol `T`                 | `Vec<TypeOfT>`    |
+| `SepList<T: sym, Sep: sym>`  | a `Sep` separated list of symbol `T`           | `Vec<TypeOfT>`    |
+| `SepList1<T: sym, Sep: sym>` | a non empty `Sep` separated list of symbol `T` | `Vec<TypeOfT>`    |
