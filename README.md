@@ -116,9 +116,9 @@ More examples can be found in this repo, with a more extensive use of the parser
 
 Grammar rules for symbols are defined as follow:
 
-Symbol ::= Rule1 | Rule2 | Rule3 ... Rule4 ;
+```Symbol ::= Rule1 | Rule2 | Rule3 ... Rule4 ;```
 
-Each rule is defined by its symbols (or '<none>') and must end with a code block, setting the '$$' variable as the output AST node of the symbol.
+Each rule is defined by its symbols (or `<none>`) and must end with a code block setting the `$$` variable as the output AST node of the symbol.
 
 It can also contain code blocks in between rule symbols and if so, they will be executed between the parsing of those symbols.
 
